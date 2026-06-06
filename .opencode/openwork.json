@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "workspace": {
+    "name": "Aarogya",
+    "createdAt": 1780757141933,
+    "preset": "starter"
+  },
+  "authorizedRoots": [
+    "C:\\Users\\Anirudh\\Desktop\\Aarogya"
+  ],
+  "reload": null
+}

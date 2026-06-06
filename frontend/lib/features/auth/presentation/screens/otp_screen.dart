@@ -5,8 +5,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:aarogya/core/services/auth_service.dart';
 import 'package:aarogya/core/services/firestore_service.dart';
+import 'package:aarogya/core/services/local_storage_service.dart';
 import 'package:aarogya/core/user_manager.dart';
+import 'package:aarogya/core/data_manager.dart';
 import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class OTPScreen extends StatefulWidget {
   const OTPScreen({super.key});
@@ -114,10 +117,14 @@ class _OTPScreenState extends State<OTPScreen> {
       await AuthService().verifyOtp(otp: enteredOtp);
       
       // 2. Auth Key & DB User verification via Node backend
+      final apiUrl = const String.fromEnvironment(
+        'API_URL',
+        defaultValue: 'http://localhost:5000/api/',
+      );
       final dio = Dio(BaseOptions(
-        baseUrl: 'http://192.168.1.48:5000/api/',
-        connectTimeout: const Duration(seconds: 2),
-        receiveTimeout: const Duration(seconds: 2),
+        baseUrl: apiUrl,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
       ));
       final response = await dio.post('auth/verify', data: {
         'phone': UserManager().phoneNumber,
@@ -132,6 +139,14 @@ class _OTPScreenState extends State<OTPScreen> {
         if (data['isNew'] == true) {
             context.go('/profile-setup');
         } else {
+            // Store JWT token from backend
+            if (data['token'] != null) {
+              await DataManager().saveJwt(data['token']);
+            }
+
+            // Register FCM token for push notifications
+            _registerFcmToken(dio);
+
             // Restore user data!
             final user = data['user'];
             UserManager().name = user['name'] ?? '';
@@ -141,7 +156,7 @@ class _OTPScreenState extends State<OTPScreen> {
               UserManager().address = user['patient']['address'] ?? '';
               UserManager().healthHistory = user['patient']['medicalHistory'] ?? '';
             } else if (role == 'doctor' || role == 'admin') {
-               UserManager().address = 'Aarogyam HQ Command, Noida'; 
+               UserManager().address = 'Aarogyam HQ Command, Noida';
             }
             context.go('/home');
         }
@@ -178,6 +193,22 @@ class _OTPScreenState extends State<OTPScreen> {
           _focusNodes[0].requestFocus();
         }
       });
+    }
+  }
+
+  /// Register FCM token with backend for push notifications
+  void _registerFcmToken(Dio dio) async {
+    try {
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        await dio.post('users/fcm-token', data: {
+          'phone': UserManager().phoneNumber,
+          'token': fcmToken,
+        });
+        print('📲 FCM token registered successfully');
+      }
+    } catch (e) {
+      print('⚠️ FCM token registration failed: $e');
     }
   }
 

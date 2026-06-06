@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -56,17 +57,51 @@ class DataManager {
   bool _isListening = false;
   bool _isSyncing = false;
   Timer? _syncTimer;
+
+  // Configurable API URL via --dart-define, defaults to localhost
+  static const String _apiUrl = String.fromEnvironment(
+    'API_URL',
+    defaultValue: 'http://localhost:5000/api/',
+  );
+
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'http://192.168.1.48:5000/api/',
-    connectTimeout: const Duration(seconds: 2),
-    receiveTimeout: const Duration(seconds: 2),
+    baseUrl: _apiUrl,
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
   ));
+
+  /// Initialize Dio with JWT interceptor
+  void _setupDioInterceptors() {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final token = LocalStorageService().get('jwt');
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+        handler.next(options);
+      },
+      onError: (error, handler) {
+        if (error.response?.statusCode == 401) {
+          print('⚠️ JWT expired or invalid — user may need to re-login');
+        }
+        handler.next(error);
+      },
+    ));
+  }
+
+  /// Store JWT received from backend
+  Future<void> saveJwt(String token) async {
+    await LocalStorageService().set('jwt', token);
+  }
 
   /// Start listening to Firestore real-time streams and syncing state.
   /// Call this upon successful login/initialization.
   void startSync() {
     if (_isListening) return;
     _isListening = true;
+
+    // Ensure interceptors are set up
+    _setupDioInterceptors();
 
     _loadMockClinics();
     _loadMockDoctors();

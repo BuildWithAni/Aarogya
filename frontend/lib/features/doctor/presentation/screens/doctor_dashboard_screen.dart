@@ -20,8 +20,29 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   bool _isConsultationActive = false;
   
   final _diagnosisController = TextEditingController();
-  final _prescriptionController = TextEditingController();
   final _notesController = TextEditingController();
+  
+  // Structured medicines list
+  final List<Map<String, TextEditingController>> _medicinesList = [];
+
+  void _addMedicineField() {
+    setState(() {
+      _medicinesList.add({
+        'name': TextEditingController(),
+        'dosage': TextEditingController(),
+        'duration': TextEditingController(),
+      });
+    });
+  }
+
+  void _removeMedicineField(int index) {
+    setState(() {
+      _medicinesList[index]['name']?.dispose();
+      _medicinesList[index]['dosage']?.dispose();
+      _medicinesList[index]['duration']?.dispose();
+      _medicinesList.removeAt(index);
+    });
+  }
 
   @override
   void initState() {
@@ -35,8 +56,12 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   void dispose() {
     _dataManager.removeListener(_onSyncUpdate);
     _diagnosisController.dispose();
-    _prescriptionController.dispose();
     _notesController.dispose();
+    for (var med in _medicinesList) {
+      med['name']?.dispose();
+      med['dosage']?.dispose();
+      med['duration']?.dispose();
+    }
     super.dispose();
   }
 
@@ -51,28 +76,43 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
 
     final appt = _activeAppointment!;
     final diag = _diagnosisController.text.trim();
-    final medicines = _prescriptionController.text.trim();
+    
+    // Compile structured medicines into a multiline string
+    final List<String> compiledMeds = [];
+    for (var med in _medicinesList) {
+      final name = med['name']?.text.trim() ?? '';
+      final dosage = med['dosage']?.text.trim() ?? '';
+      final duration = med['duration']?.text.trim() ?? '';
+      if (name.isNotEmpty) {
+        compiledMeds.add("$name - $dosage ($duration)");
+      }
+    }
+    final medicinesStr = compiledMeds.join('\n');
 
-    if (diag.isEmpty || medicines.isEmpty) {
+    if (diag.isEmpty || medicinesStr.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill out both diagnosis and prescribed medicines.")),
+        const SnackBar(content: Text("Please fill out diagnosis and at least one medicine.")),
       );
       return;
     }
 
     // 1. Submit prescription and log activity to Node backend
     try {
+      final apiUrl = const String.fromEnvironment(
+        'API_URL',
+        defaultValue: 'http://localhost:5000/api/',
+      );
       final dio = Dio(BaseOptions(
-        baseUrl: 'http://192.168.1.48:5000/api/',
-        connectTimeout: const Duration(seconds: 2),
-        receiveTimeout: const Duration(seconds: 2),
+        baseUrl: apiUrl,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
       ));
       await dio.post('prescriptions', data: {
         'appointmentId': appt.id,
         'patientId': appt.patientId,
         'doctorName': appt.doctorName,
         'diagnosis': diag,
-        'medicines': medicines,
+        'medicines': medicinesStr,
         'notes': _notesController.text.trim(),
       });
     } catch (e) {
@@ -88,8 +128,13 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
 
     // 3. Clear inputs
     _diagnosisController.clear();
-    _prescriptionController.clear();
     _notesController.clear();
+    for (var med in _medicinesList) {
+      med['name']?.dispose();
+      med['dosage']?.dispose();
+      med['duration']?.dispose();
+    }
+    _medicinesList.clear();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -356,8 +401,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                   setState(() {
                                     _activeAppointment = appt;
                                     _diagnosisController.text = "";
-                                    _prescriptionController.text = "";
                                     _notesController.text = "";
+                                    _medicinesList.clear();
+                                    _addMedicineField(); // Start with one empty field
                                   });
                                 },
                               ),
@@ -527,24 +573,85 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     const SizedBox(height: 24),
 
                     // Form Label: Prescribed Medicines
-                    Text(
-                      "Prescribed Medicines & Dosage",
-                      style: GoogleFonts.outfit(color: hospitalNavy, fontWeight: FontWeight.bold, fontSize: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Prescribed Medicines & Dosage",
+                          style: GoogleFonts.outfit(color: hospitalNavy, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        TextButton.icon(
+                          onPressed: _addMedicineField,
+                          icon: const Icon(Icons.add_circle, color: hospitalGreen, size: 18),
+                          label: const Text("Add", style: TextStyle(color: hospitalGreen, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _prescriptionController,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: "List medicines, dosage, and duration...",
-                        hintStyle: TextStyle(color: hospitalNavy.withOpacity(0.3), fontSize: 14),
-                        filled: true,
-                        fillColor: lightMint.withOpacity(0.3),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: hospitalGreen, width: 1.5)),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
+                    ...List.generate(_medicinesList.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: _medicinesList[index]['name'],
+                                decoration: InputDecoration(
+                                  hintText: "Medicine Name",
+                                  hintStyle: TextStyle(color: hospitalNavy.withOpacity(0.3), fontSize: 13),
+                                  filled: true,
+                                  fillColor: lightMint.withOpacity(0.3),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: hospitalGreen, width: 1.5)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: TextField(
+                                controller: _medicinesList[index]['dosage'],
+                                decoration: InputDecoration(
+                                  hintText: "Dosage",
+                                  hintStyle: TextStyle(color: hospitalNavy.withOpacity(0.3), fontSize: 13),
+                                  filled: true,
+                                  fillColor: lightMint.withOpacity(0.3),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: hospitalGreen, width: 1.5)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: TextField(
+                                controller: _medicinesList[index]['duration'],
+                                decoration: InputDecoration(
+                                  hintText: "Duration",
+                                  hintStyle: TextStyle(color: hospitalNavy.withOpacity(0.3), fontSize: 13),
+                                  filled: true,
+                                  fillColor: lightMint.withOpacity(0.3),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.black.withOpacity(0.08))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: hospitalGreen, width: 1.5)),
+                                ),
+                              ),
+                            ),
+                            if (_medicinesList.length > 1)
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                                onPressed: () => _removeMedicineField(index),
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
 
                     const SizedBox(height: 24),
 

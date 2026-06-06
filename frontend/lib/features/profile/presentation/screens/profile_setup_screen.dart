@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dio/dio.dart';
 import 'package:aarogya/core/user_manager.dart';
+import 'package:aarogya/core/data_manager.dart';
 import 'package:aarogya/core/services/local_storage_service.dart';
 import 'package:aarogya/core/services/firestore_service.dart';
 
@@ -198,12 +199,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
                   // Save to SQLite via Node backend (with timeout to prevent freezing)
                   try {
+                    final apiUrl = const String.fromEnvironment(
+                      'API_URL',
+                      defaultValue: 'http://localhost:5000/api/',
+                    );
                     final dio = Dio(BaseOptions(
-                      baseUrl: 'http://192.168.1.48:5000/api/',
-                      connectTimeout: const Duration(seconds: 2),
-                      receiveTimeout: const Duration(seconds: 2),
+                      baseUrl: apiUrl,
+                      connectTimeout: const Duration(seconds: 5),
+                      receiveTimeout: const Duration(seconds: 5),
                     ));
-                    await dio.post('users/profile', data: {
+                    final response = await dio.post('users/profile', data: {
                       'phone': user.phoneNumber,
                       'name': user.name,
                       'role': user.role,
@@ -212,6 +217,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       'address': user.address,
                       'medicalHistory': user.healthHistory,
                     });
+                    // Store JWT from profile creation
+                    if (response.data != null && response.data['token'] != null) {
+                      await DataManager().saveJwt(response.data['token']);
+                    }
                   } catch (e) {
                     print("Error saving profile to backend: $e");
                   }

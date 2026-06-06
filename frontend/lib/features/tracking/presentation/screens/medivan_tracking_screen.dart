@@ -20,11 +20,9 @@ class _MedivanTrackingScreenState extends State<MedivanTrackingScreen>
     with TickerProviderStateMixin {
   GoogleMapController? _mapController;
 
-  // Patient destination (Noida sector 62 area)
-  final LatLng _patientLocation = const LatLng(28.6271, 77.3760);
-
-  // Medivan starting point (3km away)
-  final LatLng _medivanStart = const LatLng(28.6120, 77.3580);
+  // Dynamic locations — set from appointment + clinic data
+  late LatLng _patientLocation;
+  late LatLng _medivanStart;
 
   late LatLng _currentMedivanPos;
   late List<LatLng> _routePoints;
@@ -45,6 +43,30 @@ class _MedivanTrackingScreenState extends State<MedivanTrackingScreen>
   @override
   void initState() {
     super.initState();
+
+    // Dynamically resolve locations from appointment + clinic data
+    final appt = DataManager().getAppointment(widget.appointmentId);
+    if (appt != null) {
+      final clinic = DataManager().getClinic(appt.clinicId);
+      if (clinic != null) {
+        _medivanStart = LatLng(clinic.latitude, clinic.longitude);
+      } else {
+        _medivanStart = const LatLng(28.6120, 77.3580); // fallback
+      }
+      // Patient location: offset from clinic to simulate destination
+      // In production, use Geolocator.getCurrentPosition()
+      _patientLocation = LatLng(
+        _medivanStart.latitude + 0.015,
+        _medivanStart.longitude + 0.018,
+      );
+      _etaSeconds = (appt.estimatedArrivalMinutes > 0)
+          ? appt.estimatedArrivalMinutes * 60
+          : 10;
+    } else {
+      _medivanStart = const LatLng(28.6120, 77.3580);
+      _patientLocation = const LatLng(28.6271, 77.3760);
+    }
+
     _currentMedivanPos = _medivanStart;
 
     _pulseController = AnimationController(
@@ -503,7 +525,14 @@ class _MedivanTrackingScreenState extends State<MedivanTrackingScreen>
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton.icon(
-                        onPressed: () => context.go('/home'),
+                        onPressed: () {
+                          final appt = DataManager().getAppointment(widget.appointmentId);
+                          if (appt != null && appt.consultationType.toLowerCase().contains('telemedicine')) {
+                            context.push('/telemedicine/${widget.appointmentId}');
+                          } else {
+                            context.go('/home');
+                          }
+                        },
                         icon: const Icon(Icons.check_circle, color: Colors.white),
                         label: Text(
                           "MEDIVAN IS HERE",

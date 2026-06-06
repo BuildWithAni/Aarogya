@@ -5,6 +5,8 @@ import 'package:camera/camera.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:dio/dio.dart';
+
 
 class TelemedicineCallScreen extends StatefulWidget {
   final String appointmentId;
@@ -141,7 +143,114 @@ class _TelemedicineCallScreenState extends State<TelemedicineCallScreen> {
     if (mounted) context.pop(true);
   }
 
+  void _showDiagnosticsDialog() {
+    final bpController = TextEditingController();
+    final spo2Controller = TextEditingController();
+    final tempController = TextEditingController();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Record Live Diagnostics", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F2D26))),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: bpController,
+                    decoration: InputDecoration(
+                      labelText: "Blood Pressure (e.g. 120/80)",
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: spo2Controller,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "SpO2 (%)",
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: tempController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Temperature (°F)",
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: isSubmitting ? null : () async {
+                        setModalState(() => isSubmitting = true);
+                        final readings = [];
+                        if (bpController.text.isNotEmpty) readings.add({'testName': 'Blood Pressure', 'result': bpController.text});
+                        if (spo2Controller.text.isNotEmpty) readings.add({'testName': 'SpO2', 'result': '${spo2Controller.text}%'});
+                        if (tempController.text.isNotEmpty) readings.add({'testName': 'Temperature', 'result': '${tempController.text}°F'});
+
+                        if (readings.isEmpty) {
+                          Navigator.pop(context);
+                          return;
+                        }
+
+                        try {
+                          final apiUrl = const String.fromEnvironment('API_URL', defaultValue: 'http://localhost:5000/api/');
+                          final dio = Dio(BaseOptions(baseUrl: apiUrl, connectTimeout: const Duration(seconds: 5)));
+                          await dio.post('diagnostics', data: {
+                            'appointmentId': widget.appointmentId,
+                            'readings': readings,
+                          });
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Diagnostics recorded!"), backgroundColor: Color(0xFF439A86)));
+                          }
+                        } catch (e) {
+                          setModalState(() => isSubmitting = false);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to save diagnostics.")));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF439A86),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: isSubmitting 
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text("Save Vitals", style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
@@ -314,11 +423,17 @@ class _TelemedicineCallScreenState extends State<TelemedicineCallScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildControlButton(
+                  icon: Icons.monitor_heart_rounded,
+                  color: Colors.blueAccent.withOpacity(0.8),
+                  onTap: _showDiagnosticsDialog,
+                ),
+                const SizedBox(width: 16),
+                _buildControlButton(
                   icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
                   color: _isMuted ? Colors.redAccent : Colors.white24,
                   onTap: _toggleMute,
                 ),
-                const SizedBox(width: 24),
+                const SizedBox(width: 16),
                 _buildControlButton(
                   icon: Icons.call_end_rounded,
                   color: Colors.redAccent,
@@ -326,7 +441,7 @@ class _TelemedicineCallScreenState extends State<TelemedicineCallScreen> {
                   size: 64,
                   onTap: _endCall,
                 ),
-                const SizedBox(width: 24),
+                const SizedBox(width: 16),
                 _buildControlButton(
                   icon: _isVideoOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
                   color: _isVideoOff ? Colors.redAccent : Colors.white24,

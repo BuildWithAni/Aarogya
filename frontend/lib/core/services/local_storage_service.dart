@@ -45,6 +45,16 @@ class LocalStorageService {
 
   bool get isLoggedIn => _userBox.get('is_logged_in', defaultValue: false);
 
+  /// Store a string value by key (e.g., JWT token)
+  Future<void> set(String key, String value) async {
+    await _userBox.put(key, value);
+  }
+
+  /// Retrieve a string value by key
+  String? get(String key) {
+    return _userBox.get(key);
+  }
+
   // ──────────────────────────────────────────────
   // CACHE OPERATIONS
   // ──────────────────────────────────────────────

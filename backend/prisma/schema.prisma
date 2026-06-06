@@ -4,7 +4,7 @@
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -22,6 +22,7 @@ model User {
   phone       String   @unique
   name        String
   role        String   @default("PATIENT")
+  fcmToken    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -71,6 +72,10 @@ model Clinic {
   nextStop        String?
   services        String       // Store as comma-separated string for SQLite
   status          String       @default("ACTIVE")
+  lastGpsLat      Float?
+  lastGpsLng      Float?
+  lastGpsTime     DateTime?
+  driverPhone     String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
